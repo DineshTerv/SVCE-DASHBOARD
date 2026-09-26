@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, Share2, Download, Camera, Database, Check } from 'lucide-react';
+import RSequenceLogo from './RSequenceLogo';
 
 export default function Header({ 
   selectedDate, 
@@ -22,14 +23,9 @@ export default function Header({
         
         {/* Left Section: Logo, Title, Badges */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Red Flag Logo Icon */}
-          <div className="w-10 h-10 bg-gradient-to-br from-[#ef4444] to-[#dc2626] rounded-xl flex items-center justify-center text-white font-black text-xl shadow-md transform hover:scale-105 transition-transform">
-            <span className="font-serif italic">R</span>
-          </div>
-
-          {/* Company/College Name Pill in Peacock Blue #005F69 */}
-          <div className="bg-gradient-to-r from-[#005F69] to-[#007A88] text-white px-4 py-1.5 rounded-2xl font-bold text-lg shadow-md tracking-wide">
-            R-Sequences
+          {/* Official R Sequence Brand Logo */}
+          <div className="hover:opacity-95 transition-opacity">
+            <RSequenceLogo className="h-10 w-auto" />
           </div>
 
           {/* OIF Code */}
