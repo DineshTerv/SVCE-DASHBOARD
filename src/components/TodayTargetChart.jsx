@@ -53,7 +53,7 @@ export default function TodayTargetChart({ data, formattedDate, onBarClick }) {
           Number of students who solved the today's target ({formattedDate})
         </h2>
         <p className="text-xs text-slate-400 mt-1">
-          Detailed breakdown of students by how many questions they solved today ({formattedDate})
+          Detailed breakdown of students by how many marks they scored today ({formattedDate})
         </p>
       </div>
 

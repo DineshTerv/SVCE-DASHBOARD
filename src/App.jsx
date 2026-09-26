@@ -6,213 +6,323 @@ import StudentPreviewModal from './components/StudentPreviewModal';
 import StudentTable from './components/StudentTable';
 import GoogleFormSyncModal from './components/GoogleFormSyncModal';
 import FloatingWidgets from './components/FloatingWidgets';
-import { COLLEGE_INFO, generateAllStudents, DATE_ANALYTICS_MAP } from './data/mockData';
+import useGoogleSheets from './hooks/useGoogleSheets';
+import useMarksSheet from './hooks/useMarksSheet';
+import { COLLEGE_INFO } from './data/mockData';
+import { formatDisplayDate, normaliseDateKey } from './data/sheetsIntegration';
+import { getMarksByDate } from './data/marksIntegration';
 import html2canvas from 'html2canvas';
 import Papa from 'papaparse';
 
 export default function App() {
-  const [selectedDate, setSelectedDate] = useState(COLLEGE_INFO.defaultDate);
-  const [students, setStudents] = useState(generateAllStudents());
-  const [analyticsDataMap, setAnalyticsDataMap] = useState(DATE_ANALYTICS_MAP);
-  
-  // Drill-down Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalInfo, setModalInfo] = useState(null);
+  const getTodayDate = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
 
-  // Google Form Live Sync Modal State
+  const [selectedDate, setSelectedDate] = useState(getTodayDate());
+
+  // ── Drill-down Modal ─────────────────────────────────────────────────────────
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalInfo, setModalInfo]     = useState(null);
+
+  // ── Google Form Sync Modal ───────────────────────────────────────────────────
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
-  // Compute analytics data for selected date
+  // ── Live Google Sheets – Attendance Data ────────────────────────────────────
+  const {
+    sheetStudents,
+    sheetDates,
+    attendanceStats,
+    loading: sheetsLoading,
+    lastSynced,
+    error: sheetsError,
+    refetch,
+  } = useGoogleSheets(selectedDate);
+
+  // ── Live Marks / Assessment Data from Google Sheet ───────────────────────────
+  const {
+    marksMap,
+    marksSummary,
+    branchBreakdown,
+    scoreDistribution,
+    loading: marksLoading,
+    error: marksError,
+    refetch: refetchMarks,
+  } = useMarksSheet();
+
+  // marksForDate: regNo → markEntry  (for the selected date / full map for new sheet)
+  const dateKey = useMemo(() => normaliseDateKey(selectedDate), [selectedDate]);
+  const marksForDate = useMemo(() => getMarksByDate(marksMap, dateKey), [marksMap, dateKey]);
+
+  // Qualified count shown in KPI
+  const marksQualifiedCount = marksSummary.qualified;
+
+  // Use live students if available, else empty
+  const students = sheetStudents.length > 0 ? sheetStudents : [];
+  const liveDataLoaded = sheetStudents.length > 0;
+
+  // ── Analytics dynamically derived from live students + live marks ─────────────
   const currentAnalytics = useMemo(() => {
-    if (analyticsDataMap[selectedDate]) {
-      return analyticsDataMap[selectedDate];
+    const todayRanges = [
+      { label: '0 Marks',    min: 0,  max: 0   },
+      { label: '1-5 Marks',  min: 1,  max: 5   },
+      { label: '6-10 Marks', min: 6,  max: 10  },
+      { label: '11-15 Marks',min: 11, max: 15  },
+      { label: '16-20 Marks',min: 16, max: 20  },
+      { label: '21-25 Marks',min: 21, max: 25  },
+      { label: '26-30 Marks',min: 26, max: 30  },
+      { label: '> 30 Marks', min: 31, max: 999 },
+    ];
+    const todayDist = todayRanges.map(r => ({ label: r.label, count: 0 }));
+
+    const tillDateRanges = [
+      { label: '0 Marks',     min: 0,   max: 0   },
+      { label: '1-20 Marks',  min: 1,   max: 20  },
+      { label: '21-40 Marks', min: 21,  max: 40  },
+      { label: '41-60 Marks', min: 41,  max: 60  },
+      { label: '61-80 Marks', min: 61,  max: 80  },
+      { label: '81-100 Marks',min: 81,  max: 100 },
+      { label: '101-120 Marks',min: 101,max: 120 },
+      { label: '> 120 Marks', min: 121, max: 999 },
+    ];
+    const tillDateDist = tillDateRanges.map(r => ({ label: r.label, count: 0 }));
+
+    if (!marksMap || marksMap.size === 0) {
+      // If no attendance data but marks are available, use marks data directly
+      if (scoreDistribution && scoreDistribution.length > 0) {
+        return {
+          todayTargetCompleted: marksSummary.qualified,
+          tillDateTargetCompleted: marksSummary.qualified,
+          todayTargetDistribution: scoreDistribution.map(d => ({ label: d.label, count: d.count })),
+          tillDateDistribution: tillDateDist,
+        };
+      }
+      return {
+        todayTargetCompleted: 0,
+        tillDateTargetCompleted: 0,
+        todayTargetDistribution: todayDist,
+        tillDateDistribution: tillDateDist,
+      };
     }
+
+    let todayCompleted = 0;
+    let tillDateCompleted = 0;
+
+    // If attendance students are loaded, cross-reference; otherwise iterate marks directly
+    const iterList = students.length > 0 ? students : [];
+
+    if (iterList.length > 0) {
+      iterList.forEach(s => {
+        const marks = marksForDate?.get(s.regNo);
+        const tq = marks?.total || 0;
+        if (marks?.qualified) todayCompleted++;
+
+        // till-date: use all marks entries (for new sheet it's the same as today)
+        const allMark = marksMap?.get(s.regNo);
+        const tdq = allMark ? (allMark.total || 0) : 0;
+        if (allMark?.qualified) tillDateCompleted++;
+
+        const tqIdx = todayRanges.findIndex(r => tq >= r.min && tq <= r.max);
+        if (tqIdx !== -1) todayDist[tqIdx].count++;
+
+        const tdIdx = tillDateRanges.findIndex(r => tdq >= r.min && tdq <= r.max);
+        if (tdIdx !== -1) tillDateDist[tdIdx].count++;
+      });
+    } else {
+      // No attendance sheet — use marks data directly for charts
+      todayCompleted = marksSummary.qualified;
+      tillDateCompleted = marksSummary.qualified;
+      for (const entry of marksMap.values()) {
+        const tqIdx = todayRanges.findIndex(r => entry.total >= r.min && entry.total <= r.max);
+        if (tqIdx !== -1) todayDist[tqIdx].count++;
+
+        const tdIdx = tillDateRanges.findIndex(r => entry.total >= r.min && entry.total <= r.max);
+        if (tdIdx !== -1) tillDateDist[tdIdx].count++;
+      }
+    }
+
     return {
-      todayTargetCompleted: 200,
-      tillDateTargetCompleted: 230,
-      todayTargetDistribution: [
-        { label: "0 questions", count: 90 },
-        { label: "1 Question", count: 2 },
-        { label: "2 Questions", count: 1 },
-        { label: "3 Questions", count: 3 },
-        { label: "4 Questions", count: 5 },
-        { label: "5 Questions", count: 7 },
-        { label: "6 Questions", count: 5 },
-        { label: "7 Questions", count: 3 },
-        { label: "8 Questions", count: 15 },
-        { label: "9 Questions", count: 75 },
-        { label: "10 Questions", count: 215 },
-        { label: "11 Questions", count: 10 },
-        { label: "12 Questions", count: 5 },
-        { label: "13 Questions", count: 2 },
-        { label: "14 Questions", count: 1 },
-        { label: "15 Questions", count: 2 },
-      ],
-      tillDateDistribution: [
-        { label: "0 questions", count: 85 },
-        { label: "1-14 Questions", count: 10 },
-        { label: "15-28 Questions", count: 35 },
-        { label: "29-42 Questions", count: 110 },
-        { label: "43-56 Questions", count: 150 },
-        { label: "57-70 Questions", count: 40 },
-        { label: "71-84 Questions", count: 8 },
-        { label: "85-98 Questions", count: 2 },
-        { label: "99-112 Questions", count: 1 },
-      ],
+      todayTargetCompleted: todayCompleted,
+      tillDateTargetCompleted: tillDateCompleted,
+      todayTargetDistribution: todayDist,
+      tillDateDistribution: tillDateDist,
     };
-  }, [selectedDate, analyticsDataMap]);
+  }, [students, marksForDate, marksMap, marksSummary, scoreDistribution]);
 
-  // Format date display (e.g. 22 Sept 2026)
-  const formattedDate = useMemo(() => {
-    const d = new Date(selectedDate);
-    if (isNaN(d)) return "22 Sept 2026";
-    const day = d.getDate();
-    const month = d.toLocaleString('en-US', { month: 'short' });
-    const year = d.getFullYear();
-    return `${day} ${month} ${year}`;
-  }, [selectedDate]);
+  // ── Formatted date label ─────────────────────────────────────────────────────
+  const formattedDate = useMemo(() => formatDisplayDate(selectedDate), [selectedDate]);
 
-  // Open bar chart detail modal
-  const handleBarClick = (info) => {
-    setModalInfo(info);
-    setIsModalOpen(true);
-  };
+  // ── Chart bar click ──────────────────────────────────────────────────────────
+  const handleBarClick = (info) => { setModalInfo(info); setIsModalOpen(true); };
 
-  // Export full report CSV
+  // ── Export Report ────────────────────────────────────────────────────────────
   const handleExportReport = () => {
-    const reportData = students.map(s => ({
-      "Sl No": s.slNo,
-      "Student Name": s.name,
-      "Register Number": s.regNo,
-      "Department": s.dept,
-      "Section": s.section,
-      "Batch": s.batch,
-      "Date": selectedDate,
-      "Attendance": "100%",
-      "Target Progress": "10/10"
-    }));
+    const reportData = students.length > 0
+      ? students.map(s => {
+          const marks = marksForDate?.get(s.regNo);
+          return {
+            'Sl No':           s.slNo,
+            'Student Name':    s.name,
+            'Register Number': s.regNo,
+            'Department':      s.dept,
+            'Laptop Status':   s.laptopStatus || '–',
+            'Date':            selectedDate,
+            'FN Attendance':   s.todayAttendance || 'N/A',
+            'Marks':           marks ? marks.total : 'N/A',
+            'Max Marks':       marks ? marks.maxMarks : 30,
+            'Qualified':       marks ? (marks.qualified ? 'YES' : 'NO') : 'N/A',
+          };
+        })
+      : [...marksMap.values()].map(m => ({
+          'Register Number': m.regNo,
+          'Email':           m.email,
+          'Branch':          m.branch,
+          'Ques Count':      m.questCount,
+          'Marks':           m.total,
+          'Max Marks':       m.maxMarks,
+          'Percentage':      m.percentage + '%',
+          'Qualified':       m.qualified ? 'YES' : 'NO',
+        }));
 
-    const csv = Papa.unparse(reportData);
+    const csv  = Papa.unparse(reportData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `SVCE_Analytics_Report_${selectedDate}.csv`;
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `SVCE_Assessment_Report_${selectedDate}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
-  // Snapshot functionality using html2canvas
+  // ── Snapshot ─────────────────────────────────────────────────────────────────
   const handleTakeSnapshot = () => {
-    const dashboardElement = document.getElementById('dashboard-root');
-    if (!dashboardElement) return;
-
-    html2canvas(dashboardElement, { scale: 2 }).then(canvas => {
-      const image = canvas.toDataURL('image/png');
+    const el = document.getElementById('dashboard-root');
+    if (!el) return;
+    html2canvas(el, { scale: 2 }).then(canvas => {
       const a = document.createElement('a');
-      a.href = image;
+      a.href     = canvas.toDataURL('image/png');
       a.download = `SVCE_Dashboard_Snapshot_${selectedDate}.png`;
       a.click();
     });
   };
 
-  // Live Form Submission Handler
-  const handleLiveSubmission = ({ date, student, todayQuestions, tillDateQuestions }) => {
-    setStudents(prev => [student, ...prev]);
-
-    setAnalyticsDataMap(prevMap => {
-      const current = prevMap[date] || currentAnalytics;
-      
-      const newTodayCompleted = todayQuestions >= 10 ? current.todayTargetCompleted + 1 : current.todayTargetCompleted;
-      const newTillCompleted = tillDateQuestions >= 40 ? current.tillDateTargetCompleted + 1 : current.tillDateTargetCompleted;
-
-      const updatedTodayDist = current.todayTargetDistribution.map(item => {
-        if (todayQuestions === 10 && item.label === "10 Questions") return { ...item, count: item.count + 1 };
-        if (todayQuestions === 0 && item.label === "0 questions") return { ...item, count: item.count + 1 };
-        return item;
-      });
-
-      const updatedTillDist = current.tillDateDistribution.map(item => {
-        if (tillDateQuestions >= 43 && tillDateQuestions <= 56 && item.label === "43-56 Questions") {
-          return { ...item, count: item.count + 1 };
-        }
-        return item;
-      });
-
-      return {
-        ...prevMap,
-        [date]: {
-          ...current,
-          todayTargetCompleted: newTodayCompleted,
-          tillDateTargetCompleted: newTillCompleted,
-          todayTargetDistribution: updatedTodayDist,
-          tillDateDistribution: updatedTillDist
-        }
-      };
-    });
-
-    if (date !== selectedDate) {
-      setSelectedDate(date);
-    }
+  // ── Live form submission (from sync modal) ───────────────────────────────────
+  const handleLiveSubmission = ({ date, student }) => {
+    if (date !== selectedDate) setSelectedDate(date);
   };
 
+  // ── Available dates from sheet (for date navigation) ─────────────────────────
+  // Convert DD/MM/YYYY → YYYY-MM-DD for the date input
+  const availableDates = useMemo(() =>
+    sheetDates.map(d => {
+      const p = d.split('/');
+      return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : d;
+    }),
+    [sheetDates]
+  );
+
+  // ── Total students: prefer attendance count, else marks count ────────────────
+  const totalStudentsCount = students.length > 0
+    ? students.length
+    : (marksMap.size > 0 ? marksMap.size : COLLEGE_INFO.totalStudentsDefault);
+
   return (
-    <div id="dashboard-root" className="min-h-screen bg-[#f3f4f8] pb-12">
-      
-      {/* Header Navigation */}
-      <Header 
+    <div id="dashboard-root" className="min-h-screen bg-[#f3f4f8] pb-16">
+
+      {/* ── Error banners ── */}
+      {sheetsError && (
+        <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 text-xs text-rose-700 font-semibold text-center">
+          ⚠ Attendance sheet: {sheetsError}
+        </div>
+      )}
+      {marksError && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 text-xs text-amber-700 font-semibold text-center">
+          ⚠ Marks sheet: {marksError}
+        </div>
+      )}
+
+      {/* ── Loading banner ── */}
+      {(sheetsLoading || marksLoading) && !liveDataLoaded && marksMap.size === 0 && (
+        <div className="bg-teal-50 border-b border-teal-200 px-6 py-2.5 text-xs text-[#005F69] font-semibold text-center animate-pulse">
+          🔄 Fetching live data from Google Sheets…
+        </div>
+      )}
+
+      {/* ── Live data status bar ── */}
+      {(liveDataLoaded || marksMap.size > 0) && !sheetsLoading && !marksLoading && (
+        <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-2 text-xs text-emerald-700 font-semibold text-center">
+          ✅ Live data loaded — {marksSummary.total} student scores · {marksSummary.qualified} qualified ({marksSummary.avgPercentage}% avg)
+          {lastSynced && ` · Last synced: ${lastSynced.toLocaleTimeString('en-IN')}`}
+        </div>
+      )}
+
+      {/* ── Header ── */}
+      <Header
         selectedDate={selectedDate}
         setSelectedDate={setSelectedDate}
         onExportReport={handleExportReport}
         onTakeSnapshot={handleTakeSnapshot}
         onOpenSyncModal={() => setIsSyncModalOpen(true)}
+        availableDates={availableDates}
       />
 
-      {/* Dashboard Body */}
+      {/* ── Dashboard Body ── */}
       <main className="max-w-7xl mx-auto px-6 py-4">
-        
-        {/* KPI Stat Cards */}
-        <KPICards 
-          totalStudents={students.length}
-          totalBatches={8}
+
+        {/* KPI Cards */}
+        <KPICards
+          totalStudents={totalStudentsCount}
+          totalBatches={COLLEGE_INFO.totalBatchesDefault}
           todayCompleted={currentAnalytics.todayTargetCompleted}
           tillDateCompleted={currentAnalytics.tillDateTargetCompleted}
+          presentToday={liveDataLoaded ? attendanceStats.presentCount : undefined}
+          attendancePercent={attendanceStats.percent}
+          liveDataLoaded={liveDataLoaded}
+          marksQualifiedCount={marksQualifiedCount}
+          marksTotal={marksSummary.total}
         />
 
-        {/* Dual Combination SVG Charts */}
-        <AnalyticsCharts 
+        {/* Dual SVG Charts */}
+        <AnalyticsCharts
           formattedDate={formattedDate}
           todayData={currentAnalytics.todayTargetDistribution}
           tillDateData={currentAnalytics.tillDateDistribution}
           onBarClick={handleBarClick}
         />
 
-        {/* Full Student Details Table */}
-        <StudentTable 
+        {/* Student Table – live data with marks */}
+        <StudentTable
           students={students}
           formattedDate={formattedDate}
+          loading={sheetsLoading || marksLoading}
+          lastSynced={lastSynced}
+          onRefresh={() => { refetch(); refetchMarks(); }}
+          marksForDate={marksForDate}
+          marksError={marksError}
         />
 
       </main>
 
-      {/* Floating Need Help & Bot Buttons */}
+      {/* Floating widgets */}
       <FloatingWidgets onOpenHelp={() => setIsSyncModalOpen(true)} />
 
-      {/* Student Details Preview Modal */}
-      <StudentPreviewModal 
+      {/* Modals */}
+      <StudentPreviewModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         modalInfo={modalInfo}
         studentList={students}
       />
 
-      {/* Google Form Live Sync Modal */}
-      <GoogleFormSyncModal 
+      <GoogleFormSyncModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
         onAddLiveSubmission={handleLiveSubmission}
-        onConnectSheetUrl={() => {
-          alert("Connected Google Sheet! Live sync activated.");
-        }}
+        onConnectSheetUrl={() => alert('Sync activated!')}
       />
 
     </div>

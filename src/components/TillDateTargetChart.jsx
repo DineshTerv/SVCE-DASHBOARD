@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 export default function TillDateTargetChart({ data, onBarClick }) {
-  const [hoveredIdx, setHoveredIdx] = useState(4); // Default hover on 43-56 Questions
+  const [hoveredIdx, setHoveredIdx] = useState(4);
 
   const yTicks = [192, 176, 160, 144, 128, 112, 96, 80, 64, 48, 32, 16, 0];
   const maxY = 192;
@@ -55,7 +55,7 @@ export default function TillDateTargetChart({ data, onBarClick }) {
           Number of students who solved the till date InClass target
         </h2>
         <p className="text-xs text-slate-400 mt-1">
-          Cumulative progress analysis for the current batch
+          Cumulative marks progress analysis for the current batch
         </p>
       </div>
 
@@ -106,7 +106,7 @@ export default function TillDateTargetChart({ data, onBarClick }) {
             {points.map((pt, idx) => {
               const barHeight = (pt.count / maxY) * chartHeight;
               const barY = paddingTop + chartHeight - barHeight;
-              const isSelected = idx === hoveredIdx || pt.label === '43-56 Questions';
+              const isSelected = idx === hoveredIdx;
 
               return (
                 <g 
