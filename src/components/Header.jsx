@@ -38,9 +38,9 @@ export default function Header({
           <div className="hidden lg:flex items-center gap-2.5">
             <SVCollegesLogo className="h-12 w-12 hover:scale-105 transition-transform" />
             <div className="flex flex-col">
-              <span className="font-extrabold text-slate-900 tracking-tight text-base leading-tight">
-                SV COLLEGES
-              </span>
+              <a href="https://svce.edu.in/" target="_blank" rel="noopener noreferrer" className="font-extrabold text-slate-900 tracking-tight text-base leading-tight hover:text-[#005F69] transition-colors cursor-pointer">
+                SVCE Tirupati
+              </a>
               <span className="text-[11px] font-semibold text-[#005F69] tracking-wider uppercase">
                 Live Analytics Dashboard
               </span>
