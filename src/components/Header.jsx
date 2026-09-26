@@ -46,10 +46,7 @@ export default function Header({
             <RSequenceLogo className="h-7 w-auto" />
           </div>
 
-          {/* OIF Code */}
-          <div className="text-xs font-semibold text-slate-500 bg-slate-100/90 backdrop-blur-sm px-2.5 py-1 rounded-md border border-slate-200/80">
-            OIF: <span className="text-slate-800 font-bold">TI27167</span>
-          </div>
+
 
           {/* Live Glowing Dot */}
           <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded border border-emerald-100 uppercase tracking-wider cursor-default shadow-xs" title="Live Google Sheets Connected">
