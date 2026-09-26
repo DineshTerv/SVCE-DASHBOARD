@@ -25,8 +25,17 @@ export default function Header({
         {/* Left Section: SV Colleges Logo, Title & Badges */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           
+          {/* Partner / Powered by R-Sequence Logo */}
+          <div className="flex items-center gap-2 hover:opacity-90 transition-opacity">
+            <img src="./r-favicon.jpg" alt="R Logo" className="h-12 w-12 object-contain rounded-md shadow-sm" />
+            <RSequenceLogo className="h-7 w-auto" />
+          </div>
+
+          {/* Divider */}
+          <div className="hidden sm:block h-7 w-px bg-slate-200 mx-0.5"></div>
+
           {/* SV Colleges Official Emblem */}
-          <div className="flex items-center gap-2.5">
+          <div className="hidden lg:flex items-center gap-2.5">
             <SVCollegesLogo className="h-12 w-12 hover:scale-105 transition-transform" />
             <div className="flex flex-col">
               <span className="font-extrabold text-slate-900 tracking-tight text-base leading-tight">
@@ -36,14 +45,6 @@ export default function Header({
                 Live Analytics Dashboard
               </span>
             </div>
-          </div>
-
-          {/* Divider */}
-          <div className="hidden sm:block h-7 w-px bg-slate-200 mx-0.5"></div>
-
-          {/* Partner / Powered by R-Sequence Logo */}
-          <div className="hidden lg:flex items-center hover:opacity-90 transition-opacity">
-            <RSequenceLogo className="h-7 w-auto" />
           </div>
 
 
