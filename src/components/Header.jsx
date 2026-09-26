@@ -39,7 +39,7 @@ export default function Header({
             <SVCollegesLogo className="h-12 w-12 hover:scale-105 transition-transform" />
             <div className="flex flex-col">
               <a href="https://svce.edu.in/" target="_blank" rel="noopener noreferrer" className="font-extrabold text-slate-900 tracking-tight text-base leading-tight hover:text-[#005F69] transition-colors cursor-pointer">
-                SVCE Tirupati
+                SVCE TIRUPATI
               </a>
               <span className="text-[11px] font-semibold text-[#005F69] tracking-wider uppercase">
                 Live Analytics Dashboard
