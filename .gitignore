@@ -13,6 +13,11 @@ dist-isolation
 .DS_Store
 *.local
 
+# Data files & test scripts
+*.xlsx
+*.txt
+*.cjs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
